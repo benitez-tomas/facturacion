@@ -43,7 +43,7 @@ th { background: #eee; }
 .correct { background: #d6ffd6; }
 
 .tariff-row {
-  background: #f0f8ff;
+  background: #e6f2ff;
   font-weight: bold;
 }
 </style>
@@ -54,12 +54,10 @@ th { background: #eee; }
 
 <textarea id="input" placeholder="Pegá acá la tabla copiada..."></textarea>
 <button onclick="process()">Procesar</button>
-<button onclick="downloadCSV()">Descargar CSV</button>
 
 <div id="result"></div>
 
 <script>
-let processedData = [];
 
 function parseMoney(str) {
   if (!str) return 0;
@@ -79,87 +77,85 @@ function process() {
   const input = document.getElementById("input").value.trim();
   if (!input) return;
 
-  const rows = input.split("\n");
-  const originalHeaders = rows[0].split("\t");
+  const rows = input.split("\n").map(r => r.split("\t"));
 
-  // Identify quantity columns (exclude TARIFA columns)
-  let quantityIndexes = [];
-  let tariffMap = {};
+  const headers = rows[0].map(h => h.trim());
 
-  for (let i = 0; i < originalHeaders.length; i++) {
-    if (!originalHeaders[i].includes("TARIFA")) {
-      quantityIndexes.push(i);
-    } else {
-      // map tariff to previous quantity column
-      tariffMap[i - 1] = i;
+  // Detect tariff columns
+  const isTariff = headers.map(h =>
+    h.toUpperCase().includes("TARIFA")
+  );
+
+  // Build list of kept columns (non-tariff)
+  const keptIndexes = headers
+    .map((_, i) => i)
+    .filter(i => !isTariff[i]);
+
+  // Map quantity column → tariff column
+  const tariffMap = {};
+  headers.forEach((h, i) => {
+    if (isTariff[i]) {
+      // Find base column by removing "TARIFA "
+      const baseName = h.replace(/TARIFA\s*/i, "").trim();
+      const baseIndex = headers.findIndex(
+        x => x.trim().toUpperCase() === baseName.toUpperCase()
+      );
+      if (baseIndex !== -1) {
+        tariffMap[baseIndex] = i;
+      }
     }
-  }
-
-  let newHeaders = quantityIndexes.map(i => originalHeaders[i]);
-  newHeaders.push("TOTAL RECALCULADO", "DIFERENCIA");
-
-  processedData = [newHeaders];
+  });
 
   let html = "<table><tr>";
+
+  const newHeaders = keptIndexes.map(i => headers[i]);
+  newHeaders.push("TOTAL RECALCULADO", "DIFERENCIA");
+
   newHeaders.forEach(h => html += "<th>"+h+"</th>");
   html += "</tr>";
 
   let tariffsRow = Array(newHeaders.length).fill("");
 
   for (let r = 1; r < rows.length; r++) {
-    if (rows[r].startsWith("Suma")) continue;
+    if (rows[r][0].toUpperCase().includes("SUMA")) continue;
 
-    let cols = rows[r].split("\t");
-
-    let newRow = [];
-
-    function val(i){ return parseMoney(cols[i]); }
-
+    const row = rows[r];
     let total = 0;
 
-    quantityIndexes.forEach((qi, idx) => {
-      newRow.push(cols[qi]);
+    html += "<tr>";
 
-      if (tariffMap[qi] !== undefined) {
-        let tariffValue = parseMoney(cols[tariffMap[qi]]);
-        let qtyValue = parseMoney(cols[qi]);
-        total += qtyValue * tariffValue;
+    keptIndexes.forEach((colIndex, newColIndex) => {
 
-        // store tariff only once
-        if (!tariffsRow[idx]) {
-          tariffsRow[idx] = formatMoney(tariffValue);
+      html += "<td>"+(row[colIndex] || "")+"</td>";
+
+      if (tariffMap[colIndex] !== undefined) {
+        const qty = parseMoney(row[colIndex]);
+        const tariff = parseMoney(row[tariffMap[colIndex]]);
+        total += qty * tariff;
+
+        if (!tariffsRow[newColIndex]) {
+          tariffsRow[newColIndex] = formatMoney(tariff);
         }
       }
     });
 
-    // add bonos + excepc if present
-    let bonos = parseMoney(cols[30] || 0);
-    let excepc = parseMoney(cols[31] || 0);
-    total += bonos + excepc;
+    const originalTotal = parseMoney(row[headers.length - 1]);
+    const diff = total - originalTotal;
 
-    let originalTotal = parseMoney(cols[32] || 0);
-    let diff = total - originalTotal;
+    html += `<td>${formatMoney(total)}</td>`;
+    html += `<td class="${diff !== 0 ? 'mismatch':'correct'}">${
+      diff !== 0 ? formatMoney(diff) : "-"
+    }</td>`;
 
-    newRow.push(formatMoney(total));
-    newRow.push(diff !== 0 ? formatMoney(diff) : "-");
-
-    processedData.push(newRow);
-
-    html += "<tr>";
-    newRow.forEach((cell, i) => {
-      if (i === newRow.length - 1) {
-        html += `<td class="${diff !== 0 ? 'mismatch':'correct'}">${cell}</td>`;
-      } else {
-        html += "<td>"+cell+"</td>";
-      }
-    });
     html += "</tr>";
   }
 
-  // Add tariffs row
+  // Add tariff row
   html += "<tr class='tariff-row'>";
   html += "<td>TARIFAS</td>";
-  tariffsRow.slice(1).forEach(t => html += "<td>"+t+"</td>");
+  for (let i = 1; i < tariffsRow.length; i++) {
+    html += "<td>"+(tariffsRow[i] || "")+"</td>";
+  }
   html += "</tr>";
 
   html += "</table>";
@@ -167,21 +163,6 @@ function process() {
   document.getElementById("result").innerHTML = html;
 }
 
-function downloadCSV() {
-  if (!processedData.length) return;
-
-  let csv = processedData.map(row =>
-    row.map(cell => `"${cell}"`).join(",")
-  ).join("\n");
-
-  const blob = new Blob([csv], {type:"text/csv"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "liquidacion_procesada.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
 </script>
 
 </body>
