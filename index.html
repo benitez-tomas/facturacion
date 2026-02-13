@@ -78,27 +78,29 @@ function process() {
   if (!input) return;
 
   const rows = input.split("\n").map(r => r.split("\t"));
-
   const headers = rows[0].map(h => h.trim());
 
-  // Detect tariff columns
-  const isTariff = headers.map(h =>
-    h.toUpperCase().includes("TARIFA")
-  );
+  const upperHeaders = headers.map(h => h.toUpperCase());
 
-  // Build list of kept columns (non-tariff)
+  const isTariff = upperHeaders.map(h => h.includes("TARIFA"));
+
+  // Detect special columns
+  const bonosIndex = upperHeaders.indexOf("BONOS");
+  const excepcIndex = upperHeaders.indexOf("EXCEPC.");
+  const totalIndex = upperHeaders.indexOf("TOTAL DIA");
+
+  // Keep only non-tariff columns
   const keptIndexes = headers
     .map((_, i) => i)
     .filter(i => !isTariff[i]);
 
-  // Map quantity column → tariff column
+  // Map quantity → tariff column
   const tariffMap = {};
   headers.forEach((h, i) => {
     if (isTariff[i]) {
-      // Find base column by removing "TARIFA "
-      const baseName = h.replace(/TARIFA\s*/i, "").trim();
-      const baseIndex = headers.findIndex(
-        x => x.trim().toUpperCase() === baseName.toUpperCase()
+      const baseName = h.replace(/TARIFA\s*/i, "").trim().toUpperCase();
+      const baseIndex = upperHeaders.findIndex(
+        x => x === baseName
       );
       if (baseIndex !== -1) {
         tariffMap[baseIndex] = i;
@@ -139,7 +141,20 @@ function process() {
       }
     });
 
-    const originalTotal = parseMoney(row[headers.length - 1]);
+    // ✅ Add BONOS and EXCEPC explicitly
+    if (bonosIndex !== -1) {
+      total += parseMoney(row[bonosIndex]);
+    }
+
+    if (excepcIndex !== -1) {
+      total += parseMoney(row[excepcIndex]);
+    }
+
+    const originalTotal =
+      totalIndex !== -1
+        ? parseMoney(row[totalIndex])
+        : 0;
+
     const diff = total - originalTotal;
 
     html += `<td>${formatMoney(total)}</td>`;
@@ -150,7 +165,7 @@ function process() {
     html += "</tr>";
   }
 
-  // Add tariff row
+  // Add tariffs row
   html += "<tr class='tariff-row'>";
   html += "<td>TARIFAS</td>";
   for (let i = 1; i < tariffsRow.length; i++) {
