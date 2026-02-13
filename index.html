@@ -94,6 +94,7 @@ function procesar() {
     let resultado = [];
 
     filas.forEach((fila, filaIndex) => {
+        if (filaIndex === 0) return;
         let columnas = fila.split("\t");
         let nuevaFila = [];
 
