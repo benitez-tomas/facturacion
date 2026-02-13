@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Procesador de Liquidación</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+  background: #f5f5f5;
+}
+
+h1 { margin-bottom: 10px; }
+
+textarea {
+  width: 100%;
+  height: 180px;
+  margin-bottom: 15px;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+button {
+  padding: 10px 20px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+table {
+  border-collapse: collapse;
+  margin-top: 20px;
+  background: white;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+th {
+  background: #eee;
+}
+
+.mismatch {
+  background: #ffd6d6;
+}
+
+.correct {
+  background: #d6ffd6;
+}
+</style>
+</head>
+<body>
+
+<h1>Procesador de Liquidación</h1>
+
+<textarea id="input" placeholder="Pegá acá la tabla copiada..."></textarea>
+
+<button onclick="process()">Procesar</button>
+<button onclick="downloadCSV()">Descargar CSV</button>
+
+<div id="result"></div>
+
+<script>
+let processedData = [];
+
+function parseMoney(str) {
+  if (!str) return 0;
+  return Number(
+    str
+      .replace(/\$/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .replace(/\s/g, "")
+  ) || 0;
+}
+
+function formatMoney(num) {
+  return "$ " + num.toLocaleString("es-AR");
+}
+
+function process() {
+  const input = document.getElementById("input").value.trim();
+  if (!input) return;
+
+  const rows = input.split("\n");
+  const headers = rows[0].split("\t");
+
+  processedData = [];
+  processedData.push([...headers, "TOTAL RECALCULADO", "DIFERENCIA"]);
+
+  let html = "<table><tr>";
+  processedData[0].forEach(h => html += "<th>" + h + "</th>");
+  html += "</tr>";
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].startsWith("Suma")) continue;
+
+    let cols = rows[i].split("\t");
+
+    function val(i) { return parseMoney(cols[i]); }
+
+    let total =
+      val(6)*val(7) +
+      val(8)*val(9) +
+      val(10)*val(11) +
+      val(12)*val(13) +
+      val(14)*val(15) +
+      val(16)*val(17) +
+      val(18)*val(19) +
+      val(20)*val(21) +
+      val(22)*val(23) +
+      val(24)*val(25) +
+      val(26)*val(27) +
+      val(28)*val(29) +
+      parseMoney(cols[30]) +
+      parseMoney(cols[31]);
+
+    let originalTotal = parseMoney(cols[32]);
+    let diff = total - originalTotal;
+
+    let rowData = [...cols, total, diff];
+    processedData.push(rowData);
+
+    html += "<tr>";
+    cols.forEach(c => html += "<td>" + c + "</td>");
+
+    let className = diff !== 0 ? "mismatch" : "correct";
+
+    html += `<td>${formatMoney(total)}</td>`;
+    html += `<td class="${className}">${diff !== 0 ? formatMoney(diff) : "-"}</td>`;
+    html += "</tr>";
+  }
+
+  html += "</table>";
+  document.getElementById("result").innerHTML = html;
+}
+
+function downloadCSV() {
+  if (!processedData.length) return;
+
+  let csv = processedData.map(row =>
+    row.map(cell => `"${cell}"`).join(",")
+  ).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "liquidacion_corregida.csv";
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>
